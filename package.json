@@ -1,0 +1,30 @@
+{
+  "name": "cxn-milkdrop-json-converter",
+  "version": "1.0.0",
+  "description": "Convert MilkDrop .milk presets to Butterchurn JSON",
+  "license": "MIT",
+  "type": "commonjs",
+  "main": "index.js",
+  "bin": {
+    "milkdrop-to-json": "bin/milkdrop-to-json.js"
+  },
+  "files": [
+    "bin",
+    "src",
+    "index.js",
+    "LICENSE",
+    "README.md",
+    "THIRD_PARTY_NOTICES.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "convert": "node bin/milkdrop-to-json.js",
+    "test": "node --test",
+    "check": "node --check index.js && node --check src/converter.js && node --check src/files.js && node --check bin/milkdrop-to-json.js"
+  },
+  "dependencies": {
+    "milkdrop-preset-converter": "0.1.2"
+  }
+}
