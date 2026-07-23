@@ -49,6 +49,12 @@ Existing files are skipped by default. Pass `--overwrite` to replace them.
 Run `npm run convert -- --help` for every option. You can also run `npm link`
 once to install the shorter `milkdrop-to-json` command globally.
 
+Directory conversions display an ASCII progress bar with converted, skipped,
+and failed counts. At the end, the command prints a summary and writes
+`conversion-report.json` in the output directory. The report contains the
+summary and a list of every failed preset with its error. Use `--no-report` to
+disable the report or `--report "path/to/report.json"` to choose its location.
+
 ## Library API
 
 ```js

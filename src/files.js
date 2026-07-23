@@ -116,6 +116,12 @@ async function mapWithConcurrency(items, concurrency, worker) {
   return results;
 }
 
+function notifyProgress(options, progress) {
+  if (typeof options.onProgress === 'function') {
+    options.onProgress(progress);
+  }
+}
+
 async function convertPath(input, output, options = {}) {
   const inputPath = path.resolve(input);
   const inputStat = await fs.stat(inputPath);
@@ -130,22 +136,38 @@ async function convertPath(input, output, options = {}) {
   const outputRoot = path.resolve(output || `${inputPath}-json`);
   const files = await findPresetFiles(inputPath, options.recursive !== false);
   const concurrency = Number.isInteger(options.concurrency) ? options.concurrency : 4;
+  let completed = 0;
+
+  notifyProgress(options, {
+    completed,
+    total: files.length,
+    result: null,
+  });
 
   return mapWithConcurrency(files, concurrency, async (file) => {
     const relativePath = path.relative(inputPath, file);
     const relativeOutput = relativePath.slice(0, -path.extname(relativePath).length) + '.json';
     const outputFile = path.join(outputRoot, relativeOutput);
 
+    let result;
     try {
-      return await convertFile(file, outputFile, options);
+      result = await convertFile(file, outputFile, options);
     } catch (error) {
-      return {
+      result = {
         input: file,
         output: outputFile,
         status: 'failed',
         reason: error.message,
       };
     }
+
+    completed += 1;
+    notifyProgress(options, {
+      completed,
+      total: files.length,
+      result,
+    });
+    return result;
   });
 }
 
