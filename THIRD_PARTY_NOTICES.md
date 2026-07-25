@@ -1,8 +1,8 @@
 # Third-party notices
 
-This package uses `milkdrop-preset-converter` by Jordan Berg and its
-transitive MilkDrop parsing utilities. These projects are provided under the
-MIT License.
+This package includes an adapter based on `milkdrop-preset-converter` by
+Jordan Berg and uses its MilkDrop parsing utilities. These projects are
+provided under the MIT License.
 
 Upstream projects:
 
