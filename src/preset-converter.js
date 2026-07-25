@@ -37,6 +37,29 @@ function splitArguments(source) {
   return argumentsList;
 }
 
+function splitStatements(source) {
+  const statements = [];
+  let depth = 0;
+  let start = 0;
+  for (let index = 0; index < source.length; index += 1) {
+    if (source[index] === '(') depth += 1;
+    if (source[index] === ')') depth -= 1;
+    if (source[index] === ';' && depth === 0) {
+      const statement = source.slice(start, index).trim();
+      if (statement) statements.push(statement);
+      start = index + 1;
+    }
+  }
+  const statement = source.slice(start).trim();
+  if (statement) statements.push(statement);
+  return statements;
+}
+
+function combineExpressions(expressions) {
+  if (expressions.length === 1) return expressions[0];
+  return `exec2(${expressions[0]},${combineExpressions(expressions.slice(1))})`;
+}
+
 function rewriteFunctionCalls(source, functionName, rewrite) {
   const lowerSource = source.toLowerCase();
   const lowerName = functionName.toLowerCase();
@@ -132,6 +155,14 @@ function rewriteLegacyFunctions(source) {
       return `invsqrt(${argumentsList.join(',')})`;
     }
     return `(1/sqrt(${argumentsList[0]}))`;
+  });
+  rewritten = rewriteFunctionCalls(rewritten, 'while', (argumentsList) => {
+    if (argumentsList.length !== 1) {
+      return `while(${argumentsList.join(',')})`;
+    }
+    const statements = splitStatements(argumentsList[0]);
+    if (statements.length < 2) return `while(${argumentsList[0]})`;
+    return `while(${combineExpressions(statements)})`;
   });
   return rewriteFunctionCalls(rewritten, 'memset', (argumentsList) => {
     if (argumentsList.length !== 3) {

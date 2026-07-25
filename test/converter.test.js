@@ -73,6 +73,37 @@ test('convertPresetText supports legacy buffer and math functions', async () => 
   assert.match(preset.frame_eqs_str, /pow/);
 });
 
+test('convertPresetText repairs recoverable legacy parser errors', async () => {
+  const source = [
+    await fs.readFile(fixturePath, 'utf8'),
+    'per_frame_2=n=8;q1=(8*n)[0]+0[n];',
+    'per_frame_3=q2=sin(time)^cos(time);',
+    'per_frame_4=q3=((1+bass)^4)/1000;',
+    'per_frame_5=v1/ang=time*.1;q4=cos(v1/ang);',
+    'per_frame_6=cy=.88/cy = .5+sin(time);',
+    'per_frame_7=while(i=0;swap=1;i<2);',
+    'per_frame_8=spin=;',
+    'per_frame_9=\\ legacy comment text',
+    'per_frame_10=q5=sin(time0.5);',
+    'per_frame_11=1/square=pow(.5+sqrt(5)/2,3);',
+    'per_frame_12=q6=if(above(time,',
+    '0),1,0);',
+    'per_frame_13=7=q7=1;',
+    'per_frame_14=user_value=;',
+    'per_frame_15=user_empty=',
+    `per_frame_16=${String.fromCodePoint(0x2697)}=1;`,
+    'per_frame_17=q8=sin(time;);',
+    'per_frame_18=mx=mx(mx*.98);',
+    '//per_pixel_1=invalid comment equation',
+  ].join('\n');
+
+  const preset = await convertPresetText(source);
+
+  assert.match(preset.frame_eqs_str, /megabuf/);
+  assert.match(preset.frame_eqs_str, /pow/);
+  assert.match(preset.frame_eqs_str, /v1ang/);
+});
+
 test('convertPath preserves folders and skips existing output', async (context) => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'milkdrop-converter-'));
   context.after(() => fs.rm(directory, { recursive: true, force: true }));

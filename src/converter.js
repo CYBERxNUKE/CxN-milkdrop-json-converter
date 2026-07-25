@@ -102,9 +102,154 @@ function rewriteTernaryAssignments(equation) {
   );
 }
 
+function findOpeningParenthesis(source, closingIndex) {
+  let depth = 0;
+  for (let index = closingIndex; index >= 0; index -= 1) {
+    if (source[index] === ')') depth += 1;
+    if (source[index] === '(') {
+      depth -= 1;
+      if (depth === 0) return index;
+    }
+  }
+  return -1;
+}
+
+function findClosingParenthesis(source, openingIndex) {
+  let depth = 0;
+  for (let index = openingIndex; index < source.length; index += 1) {
+    if (source[index] === '(') depth += 1;
+    if (source[index] === ')') {
+      depth -= 1;
+      if (depth === 0) return index;
+    }
+  }
+  return -1;
+}
+
+function powerLeftBoundary(source, caretIndex) {
+  let end = caretIndex - 1;
+  while (end >= 0 && /\s/.test(source[end])) end -= 1;
+  if (end < 0) return -1;
+
+  if (source[end] === ')') {
+    let start = findOpeningParenthesis(source, end);
+    if (start < 0) return -1;
+    let nameEnd = start - 1;
+    while (nameEnd >= 0 && /\s/.test(source[nameEnd])) nameEnd -= 1;
+    if (nameEnd >= 0 && /[A-Za-z0-9_]/.test(source[nameEnd])) {
+      while (nameEnd >= 0 && /[A-Za-z0-9_]/.test(source[nameEnd])) nameEnd -= 1;
+      start = nameEnd + 1;
+    }
+    return start;
+  }
+
+  let start = end;
+  while (start >= 0 && /[A-Za-z0-9_.]/.test(source[start])) start -= 1;
+  return start + 1;
+}
+
+function powerRightBoundary(source, caretIndex) {
+  let start = caretIndex + 1;
+  while (start < source.length && /\s/.test(source[start])) start += 1;
+  if (/[+-]/.test(source[start] || '')) start += 1;
+  while (start < source.length && /\s/.test(source[start])) start += 1;
+  if (start >= source.length) return -1;
+
+  if (source[start] === '(') {
+    const end = findClosingParenthesis(source, start);
+    return end < 0 ? -1 : end + 1;
+  }
+
+  let end = start;
+  while (end < source.length && /[A-Za-z0-9_.]/.test(source[end])) end += 1;
+  let openingIndex = end;
+  while (openingIndex < source.length && /\s/.test(source[openingIndex])) {
+    openingIndex += 1;
+  }
+  if (source[openingIndex] === '(') {
+    const closingIndex = findClosingParenthesis(source, openingIndex);
+    return closingIndex < 0 ? -1 : closingIndex + 1;
+  }
+  return end;
+}
+
+function rewritePowerOperators(equation) {
+  let rewritten = equation;
+  for (let pass = 0; pass < 50; pass += 1) {
+    const caretIndex = rewritten.lastIndexOf('^');
+    if (caretIndex < 0) break;
+    const leftStart = powerLeftBoundary(rewritten, caretIndex);
+    const rightEnd = powerRightBoundary(rewritten, caretIndex);
+    if (leftStart < 0 || rightEnd < 0 || leftStart >= caretIndex || rightEnd <= caretIndex) {
+      break;
+    }
+    const left = rewritten.slice(leftStart, caretIndex).trim();
+    const right = rewritten.slice(caretIndex + 1, rightEnd).trim();
+    rewritten = `${rewritten.slice(0, leftStart)}pow(${left},${right})${rewritten.slice(rightEnd)}`;
+  }
+  return rewritten;
+}
+
+function rewriteBufferIndexing(equation) {
+  let rewritten = equation;
+  for (let pass = 0; pass < 100; pass += 1) {
+    const closingBracket = rewritten.indexOf(']');
+    if (closingBracket < 0) break;
+    const openingBracket = rewritten.lastIndexOf('[', closingBracket);
+    if (openingBracket < 0) break;
+
+    let baseEnd = openingBracket - 1;
+    while (baseEnd >= 0 && /\s/.test(rewritten[baseEnd])) baseEnd -= 1;
+    let baseStart = baseEnd;
+    if (rewritten[baseEnd] === ')') {
+      baseStart = findOpeningParenthesis(rewritten, baseEnd);
+    } else {
+      while (baseStart >= 0 && /[A-Za-z0-9_.]/.test(rewritten[baseStart])) {
+        baseStart -= 1;
+      }
+      baseStart += 1;
+    }
+    if (baseStart < 0 || baseStart > baseEnd) break;
+
+    const base = rewritten.slice(baseStart, baseEnd + 1);
+    const index = rewritten.slice(openingBracket + 1, closingBracket);
+    rewritten = `${rewritten.slice(0, baseStart)}megabuf((${base})+(${index}))${rewritten.slice(closingBracket + 1)}`;
+  }
+  return rewritten;
+}
+
+function joinEquationContinuationLines(sourceLines) {
+  const lines = [...sourceLines];
+  const equationKey = /^(?:per_(?:frame|pixel)|(?:wave|shape)(?:code)?_\d+_)/i;
+  for (let index = 0; index < lines.length; index += 1) {
+    if (!equationKey.test(lines[index])) continue;
+    const separator = lines[index].indexOf('=');
+    if (separator < 0 || lines[index][separator + 1] === '`') continue;
+
+    let equation = lines[index].slice(separator + 1);
+    while (!hasBalancedParentheses(equation)) {
+      let continuationIndex = index + 1;
+      while (continuationIndex < lines.length && !lines[continuationIndex].trim()) {
+        continuationIndex += 1;
+      }
+      if (
+        continuationIndex >= lines.length
+        || equationKey.test(lines[continuationIndex])
+        || /^\s*\[/.test(lines[continuationIndex])
+      ) {
+        break;
+      }
+      equation += lines[continuationIndex].trim();
+      lines[index] += lines[continuationIndex].trim();
+      lines[continuationIndex] = '';
+    }
+  }
+  return lines;
+}
+
 function normalizeEquationSyntax(source) {
   const commentState = { inBlockComment: false };
-  const lines = source.split('\n');
+  const lines = joinEquationContinuationLines(source.split('\n'));
   return lines
     .map((line, index) => {
       if (!/^(?:per_(?:frame|pixel)|(?:wave|shape)(?:code)?_\d+_)/i.test(line)) {
@@ -116,7 +261,7 @@ function normalizeEquationSyntax(source) {
 
       const key = line.slice(0, separator + 1);
       const rawEquation = line.slice(separator + 1);
-      let equation = /^\s*\/\//.test(rawEquation)
+      let equation = /^\s*(?:\/\/|\\+)/.test(rawEquation)
         ? ''
         : stripEquationBlockComments(rawEquation, commentState);
       if (
@@ -147,7 +292,7 @@ function normalizeEquationSyntax(source) {
         )
         .replace(/\btex\s*\+\s*zoom\s*=/gi, 'tex_zoom=')
         .replace(/\bif\s*;\s*\(/gi, 'if(')
-        .replace(/;\s*(?=\)\s*[*/+\-])/g, '')
+        .replace(/;\s*(?=\))/g, '')
         .replace(
           /\bspec\s*=\s*\(\s*sbass\s*\+\s*stre\s*=\s*smid\s*\)/gi,
           'spec=(sbass+stre+smid)'
@@ -158,15 +303,7 @@ function normalizeEquationSyntax(source) {
         )
         .replace(/\btreb\s*\.\s*6\b/gi, 'treb*.6')
         .replace(/\$pi\b/gi, '3.141592653589793')
-        .replace(
-          /\b([A-Za-z][A-Za-z0-9_]*|\d+(?:\.\d*)?|\.\d+)\s*\^\s*(\([^()]*\)|[A-Za-z][A-Za-z0-9_]*|\d+(?:\.\d*)?|\.\d+)/g,
-          'pow($1,$2)'
-        )
         .replace(/\bgmem\s*\[([^\]]+)\]/gi, 'gmegabuf($1)')
-        .replace(
-          /\b(?!gmem\b)([A-Za-z][A-Za-z0-9_]*)\s*\[([^\]]+)\]/gi,
-          'megabuf($1+($2))'
-        )
         .replace(
           /\b(\d+(?:\.\d*)?|\.\d+)[eE]([+\-]?\d+)\b/g,
           '($1*pow(10,$2))'
@@ -195,8 +332,40 @@ function normalizeEquationSyntax(source) {
         .replace(
           /bnot\(schange\)\s*\*\s*blank\s*;;\s*\*\s*\(fastpace\)\s*;;/gi,
           'bnot(schange)*blank*(fastpace);'
-        );
+        )
+        .replace(/\bv1\s*\/\s*ang\b/gi, 'v1ang')
+        .replace(
+          /(\.88\s*\/\s*cy)\s*=\s*(\.5\s*\+\s*sin)/gi,
+          '$1;cy=$2'
+        )
+        .replace(/\btime(?=\d)/gi, 'time*')
+        .replace(
+          /\b1\s*\/\s*square\s*=\s*([^;]+);/gi,
+          'square=1/($1);'
+        )
+        .replace(
+          /(^|[;,(])\s*\d+(?:\.\d+)?\s*=\s*(?=[A-Za-z][A-Za-z0-9_]*\s*=)/g,
+          '$1'
+        )
+        .replace(
+          /\bcye\s*=\s*\(cy\s*\+\s*\.1\)\s*=\s*2\s*&/gi,
+          'cye=(cy+.1)-2&'
+        )
+        .replace(
+          /if\s*\(\s*above\s*\(\s*x\s*\*\s*\.3\s*\)\s*\)\s*,/gi,
+          'if(above(x*.3),'
+        )
+        .replace(
+          /\bbass_att\s*\*\s*10\s*=\s*(?=above\s*\()/gi,
+          'user_bass_att10='
+        )
+        .replace(/\bmx\s*\(/gi, 'mx*(')
+        .replace(/\b[A-Za-z][A-Za-z0-9_]*\s*=\s*;/g, '')
+        .replace(/\b[A-Za-z][A-Za-z0-9_]*\s*=\s*$/g, '');
+      equation = rewriteBufferIndexing(equation);
+      equation = rewritePowerOperators(equation);
       equation = rewriteTernaryAssignments(equation);
+      if (/^;*$/.test(equation.trim())) equation = '';
       const nextLine = lines[index + 1] || '';
       const nextSeparator = nextLine.indexOf('=');
       const continuesOnNextLine = nextSeparator >= 0
@@ -215,7 +384,13 @@ function normalizeSource(source) {
 
   const normalized = normalizeEquationSyntax(source
     .replace(/^\uFEFF/, '')
-    .replace(/\r\n?/g, '\n'));
+    .replace(/\r\n?/g, '\n')
+    .replace(/^\s*\/\/.*$/gm, '')
+    .replace(
+      /[^\x00-\x7F]+/g,
+      (value) => `user_unicode_${Array.from(value, (character) =>
+        character.codePointAt(0).toString(16)).join('_')}`
+    ));
   if (!normalized.trim()) {
     throw new Error('Preset source is empty');
   }
