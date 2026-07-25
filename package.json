@@ -22,9 +22,11 @@
   "scripts": {
     "convert": "node bin/milkdrop-to-json.js",
     "test": "node --test",
-    "check": "node --check index.js && node --check src/converter.js && node --check src/files.js && node --check bin/milkdrop-to-json.js"
+    "check": "node --check index.js && node --check src/converter.js && node --check src/preset-converter.js && node --check src/files.js && node --check bin/milkdrop-to-json.js"
   },
   "dependencies": {
-    "milkdrop-preset-converter": "0.1.2"
+    "hlslparser-js": "0.1.1",
+    "milkdrop-eel-parser": "0.0.4",
+    "milkdrop-preset-utils": "0.1.0"
   }
 }

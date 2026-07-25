@@ -52,6 +52,27 @@ test('convertPresetText normalizes legacy equation syntax', async () => {
   assert.match(preset.frame_eqs_str, /decay/);
 });
 
+test('convertPresetText supports legacy buffer and math functions', async () => {
+  const source = [
+    await fs.readFile(fixturePath, 'utf8'),
+    'per_frame_2=q1=assign(gmegabuf(0),ceil(time));',
+    'per_frame_3=memcpy(gmegabuf(1),gmegabuf(0),1);',
+    'per_frame_4=q2=invsqrt(4);',
+    'per_frame_5=q3=time%2==0 ? 1 : 0;',
+    'per_frame_6=n=0;loop(2,megabuf(n)=gmegabuf(n)=0;n+=1);',
+    'per_frame_7=q4=time^2;',
+    'per_frame_8=memset(4,0,2);',
+  ].join('\n');
+
+  const preset = await convertPresetText(source);
+
+  assert.match(preset.frame_eqs_str, /gmegabuf/);
+  assert.match(preset.frame_eqs_str, /Math\.floor/);
+  assert.match(preset.frame_eqs_str, /memcpy/);
+  assert.match(preset.frame_eqs_str, /sqrt/);
+  assert.match(preset.frame_eqs_str, /pow/);
+});
+
 test('convertPath preserves folders and skips existing output', async (context) => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'milkdrop-converter-'));
   context.after(() => fs.rm(directory, { recursive: true, force: true }));

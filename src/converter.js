@@ -5,7 +5,7 @@ let converter;
 function getConverter() {
   if (converter) return converter;
 
-  const bundle = require('milkdrop-preset-converter');
+  const bundle = require('./preset-converter');
   converter = bundle.default || bundle;
   if (!converter || typeof converter.convertPreset !== 'function') {
     throw new Error('milkdrop-preset-converter did not expose convertPreset()');
@@ -64,12 +64,50 @@ function stripEquationBlockComments(value, state) {
   return result;
 }
 
+function rewriteTernaryExpression(expression) {
+  let depth = 0;
+  let questionIndex = -1;
+  let nestedQuestions = 0;
+
+  for (let index = 0; index < expression.length; index += 1) {
+    const character = expression[index];
+    if (character === '(') depth += 1;
+    if (character === ')') depth -= 1;
+    if (depth !== 0) continue;
+    if (character === '?' && questionIndex < 0) {
+      questionIndex = index;
+    } else if (character === '?' && questionIndex >= 0) {
+      nestedQuestions += 1;
+    } else if (character === ':' && questionIndex >= 0) {
+      if (nestedQuestions > 0) {
+        nestedQuestions -= 1;
+      } else {
+        const condition = expression.slice(0, questionIndex);
+        const whenTrue = expression.slice(questionIndex + 1, index);
+        const whenFalse = expression.slice(index + 1);
+        return `if(${condition},${rewriteTernaryExpression(whenTrue)},${rewriteTernaryExpression(whenFalse)})`;
+      }
+    }
+  }
+  return expression;
+}
+
+function rewriteTernaryAssignments(equation) {
+  return equation.replace(
+    /\b([A-Za-z][A-Za-z0-9_]*)\s*=\s*([^;]+)/g,
+    (match, name, expression) => {
+      if (!expression.includes('?')) return match;
+      return `${name}=${rewriteTernaryExpression(expression)}`;
+    }
+  );
+}
+
 function normalizeEquationSyntax(source) {
   const commentState = { inBlockComment: false };
   const lines = source.split('\n');
   return lines
     .map((line, index) => {
-      if (!/^(?:per_(?:frame|pixel)|(?:wave|shape)_\d+_)/i.test(line)) {
+      if (!/^(?:per_(?:frame|pixel)|(?:wave|shape)(?:code)?_\d+_)/i.test(line)) {
         return line;
       }
 
@@ -82,7 +120,7 @@ function normalizeEquationSyntax(source) {
         ? ''
         : stripEquationBlockComments(rawEquation, commentState);
       if (
-        /^(?:per_(?:frame|pixel)|(?:wave|shape)_\d+_)[^=]*=\s*\/\//i.test(equation)
+        /^(?:per_(?:frame|pixel)|(?:wave|shape)(?:code)?_\d+_)[^=]*=\s*\/\//i.test(equation)
       ) {
         equation = '';
       }
@@ -99,6 +137,45 @@ function normalizeEquationSyntax(source) {
         .replace(/,\s*0\s*=\s*(?=\d)/g, ', ')
         .replace(/,\s*\.\s*-\s*(\d+)/g, ', -.$1')
         .replace(/^\s*\\+/, '')
+        .replace(
+          /\btex_ang\s*=\s*ang\s*\/\s*t8\s*=\s*ang\s*\*/gi,
+          'tex_ang=ang/t8;ang=ang*'
+        )
+        .replace(
+          /\bzoom\s*=\s*0\.8\s*=\s*0\.23\s*\*\s*cos\s*\(/gi,
+          'zoom=0.8+0.23*cos('
+        )
+        .replace(/\btex\s*\+\s*zoom\s*=/gi, 'tex_zoom=')
+        .replace(/\bif\s*;\s*\(/gi, 'if(')
+        .replace(/;\s*(?=\)\s*[*/+\-])/g, '')
+        .replace(
+          /\bspec\s*=\s*\(\s*sbass\s*\+\s*stre\s*=\s*smid\s*\)/gi,
+          'spec=(sbass+stre+smid)'
+        )
+        .replace(
+          /\(\s*bass\s*\+\s*treb\s*=\s*mid\s*\)/gi,
+          '(bass+treb+mid)'
+        )
+        .replace(/\btreb\s*\.\s*6\b/gi, 'treb*.6')
+        .replace(/\$pi\b/gi, '3.141592653589793')
+        .replace(
+          /\b([A-Za-z][A-Za-z0-9_]*|\d+(?:\.\d*)?|\.\d+)\s*\^\s*(\([^()]*\)|[A-Za-z][A-Za-z0-9_]*|\d+(?:\.\d*)?|\.\d+)/g,
+          'pow($1,$2)'
+        )
+        .replace(/\bgmem\s*\[([^\]]+)\]/gi, 'gmegabuf($1)')
+        .replace(
+          /\b(?!gmem\b)([A-Za-z][A-Za-z0-9_]*)\s*\[([^\]]+)\]/gi,
+          'megabuf($1+($2))'
+        )
+        .replace(
+          /\b(\d+(?:\.\d*)?|\.\d+)[eE]([+\-]?\d+)\b/g,
+          '($1*pow(10,$2))'
+        )
+        .replace(
+          /\(\s*8\s*\*\s*i\s*\)\s*\[([^\]]+)\]/gi,
+          'megabuf(8*i+($1))'
+        )
+        .replace(/\b([A-Za-z][A-Za-z0-9_]*)\s*\[\s*\]/g, 'megabuf($1)')
         .replace(
           /\b([A-Za-z][A-Za-z0-9_]*)\s*=\s*([A-Za-z][A-Za-z0-9_]*)\s*=\s*([A-Za-z][A-Za-z0-9_]*)\s*=\s*(-?(?:\d+(?:\.\d*)?|\.\d+))/g,
           '$3=$4;$2=$4;$1=$4'
@@ -119,10 +196,12 @@ function normalizeEquationSyntax(source) {
           /bnot\(schange\)\s*\*\s*blank\s*;;\s*\*\s*\(fastpace\)\s*;;/gi,
           'bnot(schange)*blank*(fastpace);'
         );
+      equation = rewriteTernaryAssignments(equation);
       const nextLine = lines[index + 1] || '';
       const nextSeparator = nextLine.indexOf('=');
       const continuesOnNextLine = nextSeparator >= 0
-        && /^(?:per_(?:frame|pixel)|(?:wave|shape)_\d+_)/i.test(nextLine)
+        && /^(?:per_(?:frame|pixel)|(?:wave|shape)(?:code)?_\d+_)/i.test(nextLine)
+        && !/^\s*\/\//.test(nextLine.slice(nextSeparator + 1))
         && /^\s*[+\-*/%&|]/.test(nextLine.slice(nextSeparator + 1));
       return key + addMissingTerminator(equation, continuesOnNextLine);
     })
