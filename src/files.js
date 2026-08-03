@@ -157,7 +157,7 @@ async function convertPath(input, output, options = {}) {
         input: file,
         output: outputFile,
         status: 'failed',
-        reason: error.message,
+        reason: error instanceof Error ? error.message : String(error),
       };
     }
 

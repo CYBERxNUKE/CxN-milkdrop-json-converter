@@ -293,6 +293,16 @@ function normalizeEquationSyntax(source) {
         .replace(/\btex\s*\+\s*zoom\s*=/gi, 'tex_zoom=')
         .replace(/\bif\s*;\s*\(/gi, 'if(')
         .replace(/;\s*(?=\))/g, '')
+        .replace(/\)\s*-\s*rad\s*\)\s*-\s*2\s*&/gi, ')-rad-2&')
+        .replace(/-\s*\.\s*\*\s*3\b/g, '-.3')
+        .replace(
+          /(\bmid_changed\s*=\s*bnot\([^;\n]*abs\s*\(\s*bass_effect\s*\)\s*\)\s*);/gi,
+          '$1);'
+        )
+        .replace(
+          /^(\s*ib_a\s*=.*,\s*0\s*\))\s*\)\s*;?\s*$/i,
+          '$1;'
+        )
         .replace(
           /\bspec\s*=\s*\(\s*sbass\s*\+\s*stre\s*=\s*smid\s*\)/gi,
           'spec=(sbass+stre+smid)'
