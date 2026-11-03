@@ -45,6 +45,10 @@ test('convertPresetText normalizes legacy equation syntax', async () => {
     'per_frame_13=/*',
     'per_frame_14=ignored=invalid;',
     'per_frame_15=*/q4=1;',
+    'per_frame_16=mid_changed=bnot(equal(old_mid_flop,mid_flop)-rand(time-abs(bass_effect));',
+    'per_frame_17=ib_a=if(above(x,0),if(above(y,0),1,0),0));',
+    'per_pixel_18=rot=if(above(vol,vol_att),rot,-rot)-rad)-2&(rad%x+rad)+.5;',
+    'per_pixel_19=rot=if(above(change0-.2,change4),effect5,-effect5)&x*sin(q8)-.*3&y*sin(q4);',
   ].join('\n');
 
   const preset = await convertPresetText(source);
